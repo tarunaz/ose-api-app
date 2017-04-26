@@ -1,0 +1,121 @@
+kind: Template
+apiVersion: v1
+metadata:
+  name: ose-api-app
+  annotations:
+    description: NCR template for creating a Spring Boot application built with maven
+    iconClass: icon-jboss
+    tags: instant-app,springboot,maven,java
+parameters:
+- description: The name for the application.
+  name: APPLICATION_NAME
+  displayName: Application name
+  required: true
+- description: 'Custom hostname for service routes.  Leave blank for default hostname,
+  e.g.: <application-name>.<project>.<default-domain-suffix>'
+  name: APPLICATION_HOSTNAME
+  displayName: Application hostname
+- description: Application options. These options will be passed to the Spring Boot command line
+  name: APP_OPTIONS
+objects:
+- kind: BuildConfig
+  apiVersion: v1
+  metadata:
+    name: "${APPLICATION_NAME}"
+    labels:
+      app: "${APPLICATION_NAME}"
+  spec:
+    triggers: []
+    source:
+      contextDir: ose-api-app
+      git:
+        ref: master
+        uri: https://github.com/sabre1041/summit2016-ose-cicd
+      type: Git
+    strategy:
+      type: Source
+      sourceStrategy:
+        from:
+          kind: ImageStreamTag
+          name: openjdk18-openshift:latest
+    output:
+      to:
+        kind: ImageStreamTag
+        name: "${APPLICATION_NAME}:latest"
+    resources: {}
+- kind: ImageStream
+  apiVersion: v1
+  metadata:
+    name: "${APPLICATION_NAME}"
+    labels:
+      app: "${APPLICATION_NAME}"
+  spec:
+    dockerImageRepository: ''
+    tags:
+    - name: latest
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    name: "${APPLICATION_NAME}"
+    labels:
+      app: "${APPLICATION_NAME}"
+  spec:
+    strategy:
+      type: Rolling
+      rollingParams:
+        updatePeriodSeconds: 1
+        intervalSeconds: 1
+        timeoutSeconds: 600
+      resources: {}
+    triggers: []
+    replicas: 1
+    selector:
+      deploymentconfig: "${APPLICATION_NAME}"
+    template:
+      metadata:
+        labels:
+          deploymentconfig: "${APPLICATION_NAME}"
+      spec:
+        containers:
+        - name: "${APPLICATION_NAME}"
+          image: "${APPLICATION_NAME}"
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 30
+            timeoutSeconds: 1
+          resources: {}
+          terminationMessagePath: "/dev/termination-log"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            capabilities: {}
+            privileged: false
+        restartPolicy: Always
+        dnsPolicy: ClusterFirst
+- kind: Route
+  apiVersion: v1
+  metadata:
+    name: "${APPLICATION_NAME}"
+    labels:
+      app: "${APPLICATION_NAME}"
+  spec:
+   host: "${APPLICATION_HOSTNAME}"
+   to:
+    kind: Service
+    name: "${APPLICATION_NAME}"
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: "${APPLICATION_NAME}"
+    labels:
+      app: "${APPLICATION_NAME}"
+  spec:
+   ports:
+   - name: "${APPLICATION_NAME}-http"
+     port: 8080
+     targetPort: 8080
+   selector:
+     deploymentconfig: "${APPLICATION_NAME}"
